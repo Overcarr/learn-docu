@@ -2,11 +2,57 @@
 
 # 1.核心类
 
-## 1.1.EurekaClientAutoConfigureatione
+## 1.EurekaClientAutoConfigureation
 
  Eureka client的核心启动类。
 
-###  1.1.1.注入EurekaClient
+### EurekaClientConfigBean
+
+该类承载了Application.yml中Eureka.client的参数值
+
+### EurekaInstanceConfigBean
+
+该类承载了Application.yml中Eureka.instance的参数值
+
+### EurekaServiceRegistry
+
+该类负责将实例注册或取消注册从服务中心
+
+### EurekaAutoServiceRegistration
+
+该类用于Eureka自动服务注册，其主要实现了ApplicationListener 接口，用于监听springboot启动事件，
+
+比如当WebServerInitializedEvent 事件触发时，其会调用内部的start()方法去注册，
+
+当ContextClosedEvent事件触发时，其会调用内部的close()方法去deregister()取消注册等
+
+```java
+// spring应用上下文
+private ApplicationContext context;
+
+// 服务注册执行器
+private EurekaServiceRegistry serviceRegistry; 
+
+// 服务注册元数据信息
+private EurekaRegistration registration;
+```
+
+### ApplicationInfoManger
+
+该类主要用来管理并初始化当前Instance实例的注册信息InstanceInfo实例，并提供了实例状态监听机制
+
+```java
+ // 监听实例状态变化的监听器，key为listener的ID，value为监听器自身，其中StatusChangeListener 为ApplicationInfoManager类的内部静态接口
+ protected final Map<String, StatusChangeListener> listeners
+
+ // 注册到server端的实例数据
+ private InstanceInfo instanceInfo;
+ 
+ // Eureka客户端实例配置类
+ private EurekaInstanceConfig config;
+```
+
+###  EurekaClient
 
  A、B只会有一个被注入到Spring容器中，若是B存在刷新功能，是多例的、且是懒加载，A是单例的 ---- 注解的原因
 
@@ -74,108 +120,7 @@ B、
         }
 ```
 
-### 1.1.2.
-
-## 1.2.InstanceInfo
-
-封装主机实例信息
-
-​        1、两个时间戳
-
-```
-1、lastUpdatedTimestamp
-   记录 instanceInfo 在Server 端被修改的时间。这个字段只会在server端被更新，server端通常只会修改 instanceInfo 的状态信息（我暂时只发现只修改了状态信息）
-
-2、lastDirtyTimestamp
-    记录 instanceInfo 在 Client 端被修改的时间。这个字段只会在client端被更新， instanceInfo 中任何信息被修改（数据中心信息、续约配置信息、状态等），都会更新该时间戳。
-```
-
-​       2、两种状态
-
-```
-1、status
-    InstanceInfo代表一个主机实例信息，如果客户端向服务端注册了，那么服务端和客户端都会维护一个InstanceInfo信息。 
-客户端的InstanceInfo代表了自己，服务端的InstanceInfo是在注册表中该客户端的注册信息。 
-客户端的InstanceInfo的status代表的是这个客户端真正的工作状态，而服务端的InstanceInfo的status，是在进行服务发现时希望暴露给其他客户端的工作状态。
-
-所以同一个客户端的InstanceInfo，在客户端本地的status和在服务端注册表中的status并不一定是完全一样的。 
-那么客户端如何去修改服务端注册表中它的实例信息的status？就是通过overriddenStatus，客户端发起修改状态请求传递给服务的状态就是通过overriddenStatus字段，
-
-服务端收到overriddenStatus会将它保存起来，并会根据一套覆盖状态的规则，计算出真正的InstanceInfo在服务端注册表中的status， 
-服务端注册表中的status并不会影响到客户端自己的status，并且客户端之后发起的所有向服务端同步数据的请求，服务端在进行状态处理时，并不会直接拿客户端传过来的status更新，而是根据覆盖状态的规则计算出status。 
-
-2、overriddenStatus
-```
-
-## 1.3.Application
-
-所有同一个微服务名称的主机实例都会维护在这个类
-
-```java
-public class Application {
-    
-    private static Random shuffleRandom = new Random();
-
-    @Override
-    public String toString() {
-        return "Application [name=" + name + ", isDirty=" + isDirty
-                + ", instances=" + instances + ", shuffledInstances="
-                + shuffledInstances + ", instancesMap=" + instancesMap + "]";
-    }
-
-    private String name;
-
-    @XStreamOmitField
-    private volatile boolean isDirty = false;
-    // 实例集合
-    @XStreamImplicit
-    private final Set<InstanceInfo> instances;
-
-    private final AtomicReference<List<InstanceInfo>> shuffledInstances;
-    // 实例集合 key id value 具体实例
-    private final Map<String, InstanceInfo> instancesMap;
-```
-
-## 1.4.ApplicationsApplications
-
-注册表，维护的是整个从服务端获取的注册表信息
-
-```java
-public class Applications {
-    private static class VipIndexSupport {
-        final AbstractQueue<InstanceInfo> instances = new ConcurrentLinkedQueue<>();
-        final AtomicLong roundRobinIndex = new AtomicLong(0);
-        final AtomicReference<List<InstanceInfo>> vipList = new AtomicReference<>(Collections.emptyList());
-
-        public AtomicLong getRoundRobinIndex() {
-            return roundRobinIndex;
-        }
-
-        public AtomicReference<List<InstanceInfo>> getVipList() {
-            return vipList;
-        }
-    }
-
-    private static final String STATUS_DELIMITER = "_";
-
-    private String appsHashCode;
-    private Long versionDelta;
-    @XStreamImplicit
-    private final AbstractQueue<Application> applications;
-    private final Map<String, Application> appNameApplicationMap;
-    private final Map<String, VipIndexSupport> virtualHostNameAppMap;
-    private final Map<String, VipIndexSupport> secureVirtualHostNameAppMap;
-```
-
-## 1.4.Jersey 框架
-
-Client与Server之间的通信，处理器是Resource
-
-
-
-# 2.初始化执行构造器
-
-## 2.1.CloudEurekaClient
+CloudEurekaClient
 
 ```java
 public CloudEurekaClient(ApplicationInfoManager applicationInfoManager, EurekaClientConfig config, AbstractDiscoveryClientOptionalArgs<?> args, ApplicationEventPublisher publisher) {
@@ -190,7 +135,7 @@ public CloudEurekaClient(ApplicationInfoManager applicationInfoManager, EurekaCl
     }
 ```
 
-## 2.2.DiscoveryClient：构造方法
+#### 1.DiscoveryClient：构造方法
 
 ```java
 // A、获取注册表
@@ -234,7 +179,7 @@ if (clientConfig.shouldFetchRegistry()) {
         initScheduledTasks();
 ```
 
-### 2.2.1.获取注册表
+#### 2.获取注册表
 
 ```java
 // eureka.client.fetch-registry  配置是否拉取注册表               
@@ -259,7 +204,7 @@ if (clientConfig.shouldFetchRegistry()) {
         }   
 ```
 
-#### 主获取注册表方法
+##### 主获取注册表方法
 
 ```java
 // 入参：ture全量复制，fales可能全量、可能增量 
@@ -329,7 +274,7 @@ private void getAndStoreFullRegistry() throws Throwable {
 
 增量复制
 
-#### 备获取注册表方法
+##### 备获取注册表方法
 
 ```java
 private boolean fetchRegistryFromBackup() {
@@ -371,7 +316,7 @@ private boolean fetchRegistryFromBackup() {
     }
 ```
 
-### 2.2.2.注册
+#### 3.注册
 
 ```java
 // 1、Eureka.client. register-with-eureka:   是否注册到Eureka 
@@ -419,11 +364,11 @@ if (clientConfig.shouldRegisterWithEureka() && clientConfig.shouldEnforceRegistr
 
 如果注册失败了会抛异常，导致整个客户端启动就失败了，也不会启动后面的定时任务，如果不强制初始化时进行注册，会通过心跳续约的定时任务去注册，即使注册失败了也不影响客户端启动，并会定时多次尝试进行注册。
 
-### 2.2.3.初始化定时任务
+#### 4.初始化定时任务
 
 initScheduledTasks().
 
-#### 初始化拉取注册表定时任务
+##### 初始化拉取注册表定时任务
 
 ```java
 private void initScheduledTasks() {
@@ -679,9 +624,7 @@ private void updateDelta(Applications delta) {
     }
 ```
 
-
-
-#### 初始化心跳续约定时任务
+##### 初始化心跳续约定时任务
 
 ```java
 if (clientConfig.shouldRegisterWithEureka()) {
@@ -806,9 +749,7 @@ public synchronized void unsetIsDirty(long unsetDirtyTimestamp) {
     }
 ```
 
-
-
-#### 初始化Client更新任务
+##### 初始化Client更新任务
 
 ```java
 // InstanceInfo replicator
@@ -1024,7 +965,212 @@ void refreshInstanceInfo() {
     }
 ```
 
+## 2.InstanceInfo
 
+封装主机实例信息
+
+​        1、两个时间戳
+
+```
+1、lastUpdatedTimestamp
+   记录 instanceInfo 在Server 端被修改的时间。这个字段只会在server端被更新，server端通常只会修改 instanceInfo 的状态信息（我暂时只发现只修改了状态信息）
+
+2、lastDirtyTimestamp
+    记录 instanceInfo 在 Client 端被修改的时间。这个字段只会在client端被更新， instanceInfo 中任何信息被修改（数据中心信息、续约配置信息、状态等），都会更新该时间戳。
+```
+
+​       2、两种状态
+
+```
+1、status
+    InstanceInfo代表一个主机实例信息，如果客户端向服务端注册了，那么服务端和客户端都会维护一个InstanceInfo信息。 
+客户端的InstanceInfo代表了自己，服务端的InstanceInfo是在注册表中该客户端的注册信息。 
+客户端的InstanceInfo的status代表的是这个客户端真正的工作状态，而服务端的InstanceInfo的status，是在进行服务发现时希望暴露给其他客户端的工作状态。
+
+所以同一个客户端的InstanceInfo，在客户端本地的status和在服务端注册表中的status并不一定是完全一样的。 
+那么客户端如何去修改服务端注册表中它的实例信息的status？就是通过overriddenStatus，客户端发起修改状态请求传递给服务的状态就是通过overriddenStatus字段，
+
+服务端收到overriddenStatus会将它保存起来，并会根据一套覆盖状态的规则，计算出真正的InstanceInfo在服务端注册表中的status， 
+服务端注册表中的status并不会影响到客户端自己的status，并且客户端之后发起的所有向服务端同步数据的请求，服务端在进行状态处理时，并不会直接拿客户端传过来的status更新，而是根据覆盖状态的规则计算出status。 
+
+2、overriddenStatus
+```
+
+## 3.Application
+
+所有同一个微服务名称的主机实例都会维护在这个类
+
+```java
+public class Application {
+    
+    private static Random shuffleRandom = new Random();
+
+    @Override
+    public String toString() {
+        return "Application [name=" + name + ", isDirty=" + isDirty
+                + ", instances=" + instances + ", shuffledInstances="
+                + shuffledInstances + ", instancesMap=" + instancesMap + "]";
+    }
+
+    private String name;
+
+    @XStreamOmitField
+    private volatile boolean isDirty = false;
+    // 实例集合
+    @XStreamImplicit
+    private final Set<InstanceInfo> instances;
+
+    private final AtomicReference<List<InstanceInfo>> shuffledInstances;
+    // 实例集合 key id value 具体实例
+    private final Map<String, InstanceInfo> instancesMap;
+```
+
+## 4.ApplicationsApplications
+
+注册表，维护的是整个从服务端获取的注册表信息
+
+```java
+public class Applications {
+    private static class VipIndexSupport {
+        final AbstractQueue<InstanceInfo> instances = new ConcurrentLinkedQueue<>();
+        final AtomicLong roundRobinIndex = new AtomicLong(0);
+        final AtomicReference<List<InstanceInfo>> vipList = new AtomicReference<>(Collections.emptyList());
+
+        public AtomicLong getRoundRobinIndex() {
+            return roundRobinIndex;
+        }
+
+        public AtomicReference<List<InstanceInfo>> getVipList() {
+            return vipList;
+        }
+    }
+
+    private static final String STATUS_DELIMITER = "_";
+
+    private String appsHashCode;
+    private Long versionDelta;
+    @XStreamImplicit
+    private final AbstractQueue<Application> applications;
+    private final Map<String, Application> appNameApplicationMap;
+    private final Map<String, VipIndexSupport> virtualHostNameAppMap;
+    private final Map<String, VipIndexSupport> secureVirtualHostNameAppMap;
+```
+
+# 2.注册流程
+
+![image-20220124151728272](D:\学习\learn-docu\spirng-cloud\Eureka\Eureka client.assets\image-20220124151728272-16430086539931.png)
+
+## 1.触发start()
+
+在finshRefresh方法执行后，自动触发了EurekaAutoServiceRegistration的start方法，进而触发了其内部属性EurekaServiceRegistry实例的register方法
+
+```java
+// EurekaAutoServiceRegistration.java
+    // 上下文
+	private ApplicationContext context;
+    // 注册器
+	private EurekaServiceRegistry serviceRegistry;
+    // 服务注册数据信息集合
+	private EurekaRegistration registration;
+
+@Override
+	public void start() {
+		// only set the port if the nonSecurePort or securePort is 0 and this.port != 0
+		if (this.port.get() != 0) {
+			if (this.registration.getNonSecurePort() == 0) {
+				this.registration.setNonSecurePort(this.port.get());
+			}
+
+			if (this.registration.getSecurePort() == 0 && this.registration.isSecure()) {
+				this.registration.setSecurePort(this.port.get());
+			}
+		}
+
+		// only initialize if nonSecurePort is greater than 0 and it isn't already running
+		// because of containerPortInitializer below
+		if (!this.running.get() && this.registration.getNonSecurePort() > 0) {
+           // 注册
+			this.serviceRegistry.register(this.registration);
+           // 发布实例状态变更事件
+			this.context.publishEvent(new InstanceRegisteredEvent<>(this, this.registration.getInstanceConfig()));
+			this.running.set(true);
+		}
+	}
+```
+
+## 2.调用register(EurekaRegistration reg)
+
+```java
+// EurekaServiceRegistry.java
+@Override
+	public void register(EurekaRegistration reg) {
+        // 懒加载 去实例化EurekaClintAoutConfiguration中ApplicationInfoManger、
+        // EurekaClient:执行其父类构造方法 初始化3个定时任务
+		maybeInitializeClient(reg);
+
+		if (log.isInfoEnabled()) {
+			log.info("Registering application " + reg.getApplicationInfoManager().getInfo().getAppName()
+					+ " with eureka with status " + reg.getInstanceConfig().getInitialStatus());
+		}
+        // 修改instance的状态 从staring 到 up
+		reg.getApplicationInfoManager().setInstanceStatus(reg.getInstanceConfig().getInitialStatus());
+
+		reg.getHealthCheckHandler()
+				.ifAvailable(healthCheckHandler -> reg.getEurekaClient().registerHealthCheck(healthCheckHandler));
+	}
+```
+
+## 3.发布状态修改事件
+
+```java
+           this.serviceRegistry.register(this.registration);
+           // 发布实例状态变更事件
+			this.context.publishEvent(new InstanceRegisteredEvent<>(this, this.registration.getInstanceConfig()));
+```
+
+## 4.监听事件，执行注册
+
+```java
+               statusChangeListener = new ApplicationInfoManager.StatusChangeListener() {
+                @Override
+                public String getId() {
+                    return "statusChangeListener";
+                }
+                // 监听状态
+                @Override
+                public void notify(StatusChangeEvent statusChangeEvent) {
+                    if (InstanceStatus.DOWN == statusChangeEvent.getStatus() ||
+                            InstanceStatus.DOWN == statusChangeEvent.getPreviousStatus()) {
+                        // log at warn level if DOWN was involved
+                        logger.warn("Saw local status change event {}", statusChangeEvent);
+                    } else {
+                        logger.info("Saw local status change event {}", statusChangeEvent);
+                    }
+                    // 前文有介绍
+                    instanceInfoReplicator.onDemandUpdate();
+                }
+            };
+
+            if (clientConfig.shouldOnDemandUpdateStatusChange()) {
+                applicationInfoManager.registerStatusChangeListener(statusChangeListener);
+            }
+```
+
+## 5.谁来负责注册
+
+1. 如果开启强制初始化注册（shouldEnforceRegistrationAtInit）开关（默认false），Eureka Client会通过实例化CloudEurekaClient时候调用基类DiscoveryClient构造器时（启动定时scheduler之前）就注册
+2. 若开启了状态改变按需更新开关（onDemandUpdateStatusChange，默认true），注册动作会在spring上下文的finishRefresh方法调用后触发EurekaAutoServiceRegistration的start方法去执行注册逻辑，该注册逻辑是利用了ApplicationInfo.setInstanceStatus方法，进而触发实例InstanceInfo状态发生改变（由STARTING 改为UP），再进而触发了状态变化监听器去调用了InstanceInfoReplicator的onDemandUpdate方法，触发按需更新任务，从而执行了注册
+3. 若2中开关关闭，那么注册任务将由CloudEurekaClient 实例化时创建的定时scheduler去触发注册行为，Heartbeat 定时器为默认延迟30秒创建并每隔30秒定时执行，InstanceInfoReplicator定时器或默认延迟40秒并每隔30秒执行一次
+
+其中心跳监测定时器会在第一次执行时，若返回404，会触发注册请求调用
+
+而InstanceInfoReplicator定时器只要实例InstanceInfo发生dirty 时就会发起注册行为，而EurekaAutoServiceRegistration的start方法的执行就会导致InstanceInfo的状态由STARTING变为UP
+
+故3中的两个执行器谁先首次执行，谁就会去发起注册行为，通常由于默认延迟时间不同，Heartbeat 定时器会发起首次注册行为
+
+
+
+![image-20220124154439891](D:\学习\learn-docu\spirng-cloud\Eureka\Eureka client.assets\image-20220124154439891-16430103039082.png)
 
 # 3.下架
 
@@ -1144,4 +1290,12 @@ public void setStatus(EurekaRegistration registration, String status) {
         }
     }
 ```
+
+
+
+参考：[注册流程](https://copyfuture.com/blogs-details/20211113010357190s)
+
+
+
+
 
